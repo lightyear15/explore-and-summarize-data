@@ -1,0 +1,355 @@
+---
+title: "Project 3 Exploratory Data Analysis"
+author: "Giulio Ministeri"
+date: "11/04/2015"
+output: html_document
+--- 
+For this Nanodegree project, I decided to find a dataset on my own.  
+Thanks to Udacity and to this Nanodegree project, few months ago I discovered the website Kaggle.com; a very interesting website that hosts companies or academic instutions which want to challenge data scientists all over the world and get some help in solving their current issues.  
+So far I've been surfing pages and projects and look what is going on there, never submitted a solution or attempted to get involved in any of the competions.  
+I chose to pick a dataset from one of the Kaggle competitions and use it to complete this Nanodegree project, with the hope of raising the attention of the reviewer, probably bored after reviewing hundreds of projects about wine ;-) .  
+The dataset is available here: http://www.kaggle.com/c/bike-sharing-demand and it is about bike sharing. Basically It is asked to find a good predictor to forecast the number of bike rentals using features like date, time of the day and weather-related features like temperature, humidity, ecc... The dataset have been collected through the Washington D.C. bike sharing program.  
+Here is the features list description as presented by the authors of the competition:  
+Data Fields:  
+<ul>  
+-  datetime, hourly date + timestamp
+-  season,  1 = spring, 2 = summer, 3 = fall, 4 = winter  
+-  holiday, whether the day is considered a holiday  
+-  workingday, whether the day is neither a weekend nor holiday
+-  weather, 1: Clear, Few clouds, Partly cloudy, Partly cloudy 2: Mist + Cloudy, Mist + Broken clouds, Mist + Few clouds, Mist 3: Light Snow, Light Rain + Thunderstorm + Scattered clouds, Light Rain + Scattered clouds 4: Heavy Rain + Ice Pallets + Thunderstorm + Mist, Snow + Fog  
+-  temp, temperature in Celsius  
+-  atemp, "feels like" temperature in Celsius  
+-  humidity, relative humidity  
+-  windspeed - wind speed  
+-  casual, number of non-registered user rentals initiated  
+-  registered, number of registered user rentals initiated  
+-  count, number of total rentals  
+</ul>
+I decided to change the name "count" to "total_rent" to avoid misunderstanding in histogram plots
+```{r, echo=FALSE}
+dts <- read.delim('/home/giulio/Dropbox/DSN_data/train.csv', sep = ",")
+library(plyr)
+dts <-rename(dts, replace=c("count" = "total_rent"))
+dim(dts)
+names(dts)
+summary(dts)
+```
+
+First, I noticed that "datetime" feature includes too many information, I splitted into four new features: hour, day, month and year (minutes and seconds are always equal to 0). 
+```{r}
+tmp <- data.frame( DateTime=dts$datetime, time=format(as.POSIXct(dts$datetime, format="%Y-%m-%d %H:%M:%S"), format="%H"), day=format(as.POSIXct(dts$datetime, format="%Y-%m-%d %H:%M:%S"), format="%d"), month=format(as.POSIXct(dts$datetime, format="%Y-%m-%d %H:%M:%S"), format="%m"), year=format(as.POSIXct(dts$datetime, format="%Y-%m-%d %H:%M:%S"), format="%Y"))
+dts$hour <- as.numeric(tmp$time)
+dts$day <- as.numeric(tmp$day)
+dts$month <- as.numeric(tmp$month)
+dts$year <- tmp$year
+dts$datetime <- NULL
+```
+  
+After the extraction:
+```{r, echo=FALSE}
+summary(dts)
+head(dts)
+```
+  
+Looking at the column "season" I noticed two things:  
+<ul>
+- the season labels are wrong: january the first which should be winter, is marked as "season=1" which they say it is spring;  
+- the dataset seems to be equally distributed and to cover the whole year.  
+</ul>
+Of course the holidays are very rare and working days are more frequent. Temperature is very warm, and humidity is very high and, in fact the felt temperature is bigger of 3 to 5 degrees. Wind is also a constant presence, but never annoying: looking at the quartiles, (and assuming wind is measured in knots) the wind speed is below the 17 knots, I am not so expert about wind speeds but I think that at these speeds wind can be considered almost a breeze.  
+
+##Univariate plots section
+
+As a first step I want to take a look at data about weather and climate.
+```{r, echo=FALSE}
+library (ggplot2)
+library(grid)
+library(gridExtra)
+ggplot(dts, aes(x=season)) + geom_histogram()
+```
+     
+As already noticed, data are equally distributed among seasons.
+```{r}
+ggplot(dts, aes(x=weather)) + geom_histogram()
+```
+  
+It is a very sunny place, very few days with rain or bad weather.
+```{r}
+ggplot(dts, aes(x=temp)) + geom_histogram(binwidth=2)
+ggplot(dts, aes(x=atemp)) + geom_histogram(binwidth=4)
+```
+  
+Also temperature seems not to be a problem for bikers, very few days with prohibitive temperatures. The temperature distribution has an indefinable shape, but I think I can say it is unimodal, close to the gaussian shape.
+```{r}
+ggplot(dts, aes(x=humidity)) + geom_histogram(binwidth=2)
+ggplot(dts, aes(x=windspeed)) + geom_histogram(binwidth=3)
+```
+  
+Very sunny and warm place, lot of humidity and quite often wind with low speed. It seems we are in a city near the coast. I am not from U.S. and I am not a climate expert but I thing Washington D.C. can be considered a coast city, or at least a city where the influence of the sea on local climate is strong.     
+     
+For the sake of completeness, before diving into the biker rental numbers, I graph the holidays and working days histogram.
+```{r}
+ggplot(dts, aes(x=holiday)) + geom_histogram()
+ggplot(dts, aes(x=workingday)) + geom_histogram()
+```
+  
+As expected most of the days are working days and very few are holidays. Let me check if these two variables are mutually exclusive, i.e. if it is a working day it is not an holiday and viceversa.
+```{r}
+dim(subset(dts, workingday==1 & holiday==1 & hour==12))
+dim(subset(dts, workingday==0 & holiday==0 & hour==12))
+head(subset(dts, workingday==0 & holiday==0 & hour==12), n= 3)
+```
+  
+Holidays are not working days (as expected), but not all the not workingdays are holidays, probably weekends are considered neither working days nor holidays. A quick check in a 2011 calendar reveals my hypothesis is right.  
+
+The added features about time:
+```{r, warning=FALSE}
+ggplot(dts, aes(x=hour)) + geom_histogram(binwidth=1)
+ggplot(dts, aes(x=day)) + geom_histogram(binwidth=1)
+ggplot(dts, aes(x=month)) + geom_histogram(binwidth=1)
+ggplot(dts, aes(x=year)) + geom_histogram(binwidth=1)
+```
+
+Now the bike rental data
+```{r}
+ggplot(dts, aes(x=total_rent)) + geom_histogram(binwidth=1)
+ggplot(dts, aes(x=registered)) + geom_histogram(binwidth=1)
+ggplot(dts, aes(x=casual)) + geom_histogram(binwidth=1)
+```
+  
+which I think they would be clearer in logarithmic scale
+```{r, warning=FALSE}
+ggplot(dts, aes(x=total_rent)) + geom_histogram(binwidth=0.05) + scale_x_log10()
+ggplot(dts, aes(x=registered)) + geom_histogram(binwidth=0.05) + scale_x_log10()
+ggplot(dts, aes(x=casual)) + geom_histogram(binwidth=0.05) + scale_x_log10()
+```
+  
+Total and registered rentals have almost the same distribution, while casual riders distribution is quite different and ranges in an interval almost an order of magnitude smaller than the registered riders distribution. The total and registered rentals seems to have a bimodal distribution, probably a combination of two gaussian distributions, while the casual rents look like an exponential distribution. I want to check the weight of casual riders in the total count.
+```{r,warning=FALSE}
+summary(dts$casual / dts$total_rent)
+ggplot(subset(dts, total_rent > 0), aes(x=casual/total_rent)) + geom_histogram(binwidth=0.02)
+```
+  
+For the most of the time the casual riders are a small part of the "total_rent"; very often the casual riders are zero.  
+
+
+##Univariate analysis section
+###What is the structure of your dataset?
+The dataset has 10886 rows and 11 features: datetime, season, holiday, workingday, weather, temp, atemp, humidity, windspeed, casual rentals, registered rentals, total rentals. Five features (datetime, season, holiday, workingday, weather) are categorical variables, while the others can be considered continuous variables.  
+The dataset spans over 2011 and 2012 years, data come from the firsts 19 days of every month of those years.  
+The climate data reveal we are in a city near the coast where temperature is warm for the entire year and wind is a constant presence.  
+The rentals come most from registered rentals, while the casual rentals are a small fraction, on average they are the 17 % of the total.  
+
+
+###What is/are the main feature(s) of interest in your dataset?
+Of course the most important features of the dataset are ones about rentals. The goal here is to determine which of the other features are best for predicting rentals counts. After this first review I think that "workingday" and "hour" will be two of the most effective features for prediction. Probably, among climate features, "weather" and "temperature" will be the most useful.  
+
+###What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+In my opinion "month" or "season" would be in some way useful to identify casual rentals made by tourists, probably also windspeed would influence the rentals count. On the contrary I think that "year", or "day" will be useless or very ineffective, also "atemp" and "humidity" would be useless since they are repetitions of other features.  
+
+###Did you create any new variables from existing variables in the dataset?
+Yes I did. The original dataset enclosed information about hour of the day, day of the month, month of the year and year in one single timestamp variable called "datetime". I splitted this feature into four new features and removed the timestamp. Minutes and seconds have been discarded since they are always 0.  
+
+###Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+Yes I transformed in logarithmic scale the rentals data. The distribution is strongly skewed to 0 value; while the log-transformed distributions appear to be bimodal for "registered" and "total_rent" with two peaks at around 8 and 200. The casual rentals have an indefinite distribution, even if it reminds an exponential one.
+
+##Bivariate plots section
+I think that from now on I can ignore "total_rent" feature and analyze "registered" and "casual" features in separate ways. Total rentals count is always the sum of the other two rent types, so If good predictive models can be found for registered and casual a model for "total_rent" would be useless.  
+  
+The response variable most influenced by temperature is "casual" rentals, while in the registered rentals the influence is still present but is less noticeable.  
+```{r}
+cor(subset(dts, select=c( weather, temp, atemp, humidity, windspeed, registered)))
+cor(subset(dts,select=c(weather, temp, atemp, humidity, windspeed, casual)))
+ggplot(dts, aes(x=temp, y=atemp)) + geom_point() + geom_smooth(method='lm',color='red') 
+```
+  
+"temp" and "atemp" are very correlated, they almost have a determistic relation.
+```{r}
+ggplot(dts, aes(x=temp, y=registered)) + geom_point() + scale_x_log10() 
+ggplot(dts, aes(x=temp, y=casual)) + geom_point() + scale_x_log10()
+```
+  
+Even if it looks that temperature affects registered rentals through a linear or even an exponential function, I think that it works more as an indicator function: below 10°degrees rentals have a uniform distribution very tight to 0, but as temperature rises above 10° the distribution spreads uniformly from 0 to 800. For casual rentals exponential relation seems to be stronger, but, the behavior is almost the same, probably the threshold value is little bit higher. 
+  
+```{r}
+ggplot(dts, aes(x=as.factor(weather), y=registered)) + geom_boxplot()
+ggplot(dts, aes(x=as.factor(weather), y=casual)) + geom_boxplot()
+```
+  
+Looking at the correlation coefficient, the influence of weather on rentals is remarkable for both the type of rents. Looking at the box plot, it seems that the weather affects the response variable mainly on the variance, and in small part on the average value. As for "temp", I think that the "weather" feature works as a discriminant variable: in case of bad weather we can be confident on predicting a low number of rents; on the contrary in case of sunny weather our estimation confidence decreases because lot more new (and maybe unknown) variables comes into play. Putting it simply: if it is raining, surely very few people will take the bike and blindly saying that no one will take a bike will not be so far from truth; if it is sunny, instead, people will be completely free to decide to go for a ride or not, and we will need a way more features to try and estimate the number of rents.
+
+A look on humidity data:
+```{r}
+ggplot(dts, aes(x=weather, y=humidity)) + geom_point() + geom_smooth(method='lm', color='red')
+```
+  
+And as expected humidity is correlated to weather.
+  
+```{r}  
+ggplot(dts, aes(x=windspeed, y=registered)) + geom_point()
+ggplot(dts, aes(x=windspeed, y=casual)) + geom_point()
+```
+  
+As for "weather", the windspeed influences rents, almost only in the variance behavior. In case of very strong wind, rentals distribution tightens to zero. As "temp" the windspeed does not seem to have linear relation but more as a step function with a threshold at around 35 / 38 knots.
+
+```{r}
+cor(subset(dts,select=c(workingday, holiday, hour, day, month, season, registered)))
+cor(subset(dts,select=c(workingday, holiday, hour, day, month, season, casual)))
+
+ggplot(dts, aes(x=hour, y=registered)) + geom_point()
+ggplot(dts, aes(x=hour, y=casual)) + geom_point()
+```
+  
+The behavior for registered and casual rentals based on hour is very different.
+```{r}
+ggplot(dts, aes(x=as.factor(workingday), y=registered)) + geom_boxplot()
+ggplot(dts, aes(x=as.factor(workingday), y=casual)) + geom_boxplot()
+```
+  
+Also the "workingday" influence is strong but totally different for the two types of rents.  
+
+```{r}
+ggplot(dts, aes(x=as.factor(season), y=registered)) + geom_boxplot()
+ggplot(dts, aes(x=as.factor(month), y=registered)) + geom_boxplot()
+ggplot(dts, aes(x=as.factor(season), y=casual)) + geom_boxplot()
+ggplot(dts, aes(x=as.factor(month), y=casual)) + geom_boxplot()
+```
+  
+The "month" and "season" features appear to be correlated to both the types of rents, and in the same way. I need to investigate more, but I think that "month" is in practice a repetition of the information about season.  
+  
+##Bivariate analysis section  
+###Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?  
+As expected temperature in season=1 is the coldest of the year, and season=3 is the hottest. Season=3 has the biggest count of sunny days, while season=1 is the most windy. The right labels are: winter label 1; summer label 3; spring label  2 and fall label 4.  
+From climate-related features analysis emerges that:
+<ul>
+-  "temp" and "atemp" are strongly correlated each other, and have strong correlation to all the three response variables  
+-  "weather" has a small correlation to the response variables, but the reason may be to the nature of this feature which is categorical.    
+</ul>
+From time-related features analysis emerges that:  
+<ul>
+-  working day has a remarkable correlation to both registered and casual rentals, but the two correlation values have opposite sign.
+-  "hour" vs "registered" and "casual" show different behavior. Registered rentals show two sharp peaks while casual rentals show only one fat peak.
+</ul>
+These behaviors seem reasonable: registered rentals are made by working people who probably need bike to go to work; on the contrary casual rentals are made by people during the week-end who decided at the end to go for a ride. So for registered rents, being a working day makes the rentals go higher (positive correlation), for casual rentals being a not-working day increases the rentals (negative correlation).  
+"hour" feature correlation supports this hypothesis: registeredrentalsare made in working hours, the two peaks are at about 8 am and 6 pm; while for casualrentalsthe peak is the central hours of the day.
+
+###Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+<ul>
+-  unexpectedly "humidity" has a strong correlation with response variables, but more deep analysis is needed  
+-  "humidity" and "weather" have remarkable correlation  
+-  "windspeed" has very weak correlation to "registered", but remarkable correlation to casual rentals  
+-  "holiday" and "day" features have very low correlation to response variables
+-  "month" and "season" correlation to response variables are high but probably for the same reason, i.e. they are showing the same behavior of people influence by the period of the year.  
+</ul>
+What force to think that the "humidity" correlation results does not reflects reality is the correlation between "humidity" itself and "weather", and "weather" and response variables; I think that the correlation between "humidity" and response variables is pushed by the "weather" feature, whose correlation to response variables is hidden by its categorical nature. Second I can not believe that people check their portable hygrometer before renting a bike.  
+Casual rentals are common in spring fall and summmer, while registered rentals occur more frequently only in spring and summer. Probably that is because of the guarantee that these seasons give about the weather: people who register for a rent must be sure that weather doesn't change during the day.
+
+###What was the strongest relationship you found?  
+The strongest correlation I saw is among "hour" of the day and rents. The linear model is not the most appropriate to explain the correlation: being at 01 or at 24 doesn't change much the willingness of people to rent a bike. Using a non-linear transformation to "hour", which counts, for example, for the time from and/or to the rush hours could increase the correlation to rentals count.  
+
+The numerous samples of rentals equal to very low values, make difficult to find a clear relation with the predictive variables. 
+
+##Multivariate plots section
+
+```{r}
+ggplot(dts, aes(x=humidity, y=registered, color=weather)) + geom_point() + scale_colour_gradientn(colours=rainbow(4)) 
+
+ggplot(dts, aes(x=humidity, y=casual, color=weather)) + geom_point() + scale_colour_gradientn(colours=rainbow(4))
+```
+  
+From these scatter plots it is hard to understand which of the two features, "weather" and "humidity", is more influent to the response variables. Even though the relationship between weather and humidity is clear, the humidity increases as the weather gets worse, the relationship among weather and/or himidity to the response variable is not. 
+
+```{r}
+library(Hmisc)
+ggplot(dts, aes(x=temp, y=registered, color=as.factor(season))) + stat_summary(fun.data ="mean_sdl", mult=1, geom = "smooth")
+ggplot(dts, aes(x=temp, y=casual, color=as.factor(season))) + stat_summary(fun.data ="mean_sdl", mult=1, geom = "smooth")
+```
+  
+Rents have different behaviour in function of "temp" depending on the "season". In both rent types there is a strange peak in winter when temperature is above 27°; even if at the same temperature, people behave differently whether it's spring or fall.
+
+```{r}
+ggplot(dts, aes(x=hour, y=registered, color=as.factor(season))) + geom_line(stat="summary", fun.y = mean)
+ggplot(dts, aes(x=hour, y=registered, color=as.factor(month))) + geom_line(stat="summary", fun.y = mean)
+
+ggplot(dts, aes(x=hour, y=casual, color=as.factor(season))) + geom_line(stat="summary", fun.y = mean)
+ggplot(dts, aes(x=hour, y=casual, color=as.factor(month))) + geom_line(stat="summary", fun.y = mean)
+```
+   
+As a matter of fact, "month" is not simply a repetition of "season" information, indeed the distributions of casual and registered rentals do not change based only on seasons; actually there are small changes also within the months of the same season. Hence, it would be more reasonable to remove "season" and add "month" to the predictive set.
+
+```{r}
+ggplot(dts, aes(x=hour, y=registered, color=as.factor(workingday))) + geom_point(alpha=1/2)
+ggplot(dts, aes(x=hour, y=registered, color=as.factor(workingday))) + geom_line(stat="summary", fun.y=mean)
+ggplot(dts, aes(x=hour, y=casual, color=as.factor(workingday))) + geom_point(alpha=1/2)
+ggplot(dts, aes(x=hour, y=casual, color=as.factor(workingday))) + geom_line(stat="summary", fun.y=mean)
+```
+  
+Once more, response variables in function of "hour" depends whather the day is a working day or not.  
+Now I'd like to investigate the behavior ofrentalsduring the year, in function of the hour.
+```{r}
+ggplot(subset(dts, workingday==1), aes(x=hour, y=month, fill=registered)) + geom_tile() + scale_fill_gradient(low="blue", high="red")
+```
+  
+Apart the winter months, registered rentals in working days, mainly come from working people who rent bikes to go to work. There is a small peak in August probably due to tourists, and a small drop in October I can not explain.
+```{r}
+ggplot(subset(dts, workingday==0), aes(x=hour, y=month, fill=casual)) + geom_tile() + scale_fill_gradient(low="blue", high="red")
+```
+  
+Casual rentals in not working days have a peak in April. I guess it is the people reaction to firsts sunny days of the coming spring with a sunday bike ride.
+
+```{r}
+ggplot(subset(dts, workingday==0), aes(x=temp, y=weather, fill=casual)) + geom_tile() + scale_fill_gradient(low="blue", high="red")
+ggplot(subset(dts, workingday==0), aes(x=temp, y=weather, fill=registered)) + geom_tile() + scale_fill_gradient(low="blue", high="red")
+```
+  
+In this plots a specific zone, I called the "comfortable zone", can be identfied in the lower right of the plot. In this zone, the number of riders is the highest. Note that the zone it's not precisely the low right corner, but a bit more in the centre. Especially for casual rents, too high temperature it's uncomfortable too. For "registered", higher temperatures do not affect the number of rents as for "casual"; maybe because who decides to rent a bike in advance (registering) does not take into account temperatures but only weather. 
+
+##Multivariate analysis section
+###Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+"hour" and "workingday" are the most meaningful features for both the response variables.  
+The behavior of the two type of rentals is completely different in terms of these two features. For casual rents, being in a workingday is synonim of higher rentals on average, while for registered rentals it's exactly the opposite. Rental trends assumes different shapes during the day: for casual rentals there is one fat peak during the central hours of the day; while for registered rentals there are two sharp peaks in the morning at 8am and in the evening at 6pm, i.e. when people go to, and come back from work.  
+
+###Were there any interesting or surprising interactions between features?
+Climate-related features, as expected, are more or less correlated each other and correlated to "season" index. "humidity" and "weather" are strongly correlated to each other; also "temp" and "atemp" are strongly correlated, the relation is almost deterministic.  
+
+##Final Plots and Summary  
+
+###Plot 1
+```{r, echo=FALSE}
+ggplot(dts, aes(x=registered)) + geom_histogram(binwidth=1) + scale_x_continuous(limits=c(quantile(dts$registered, 0.05), quantile(dts$registered,0.95)))  + labs(title="distribution of the registered rents", y="count of registered rents", x="number of registered rents" )
+
+ggplot(dts, aes(x=casual)) + geom_histogram(binwidth=1) + scale_x_continuous(limits=c(quantile(dts$casual, 0.05), quantile(dts$casual,0.95)))  + labs(title="distribution of the casual rents", y="count of casual rents", x="number of casual rents")
+```
+  
+####Description  
+The two distributions of registered and casual bike rentals are strongly skewed to zero. The problem resides in the dataset which, in my opinion, is too detailed. Some aggregation is needed to remove these zeros, while preserving the nature of the dataset and the phenomena it describes. 
+
+###Plot 2
+```{r, echo=FALSE}
+ggplot(dts, aes(x=as.factor(month), y = registered, fill=as.factor(season))) + geom_boxplot() + scale_x_discrete( breaks=seq(1,12,1), labels=c("Jan", "Feb", "Mar", "Apr","May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) + scale_fill_discrete(labels=c("winter", "spring", "summer", "fall")) + labs(title="registered rentals distribution during the year", x="month", y ="registered rents", fill="Season") 
+
+ggplot(dts, aes(x=as.factor(month), y=casual, fill=as.factor(season))) + geom_boxplot() + scale_x_discrete( breaks=seq(1,12,1), labels=c("Jan", "Feb", "Mar", "Apr","May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) + scale_fill_discrete(labels=c("winter", "spring", "summer", "fall")) + labs(title="casual rentals distribution during the year", x="month", y ="casual rents", fill="Season") 
+```
+  
+####Description 
+The seasonal trend of rentals shown mounth by mounth. Casual rentals are driven, probably by tourism: the distribution is gaussian with a peak in July. The registered rentals are driven by resident people who uses the bike fo their trip during their everyday life; so the trend the count of registered rentals grow as spring starts, reaches the peak in June, slightly decreases in summer, and then decreases in fall months.
+ 
+
+###Plot 3
+```{r, echo=FALSE}
+ggplot(dts, aes(x=hour, y=registered, color=as.factor(workingday))) + geom_line(stat="summary", fun.y=mean) + scale_x_continuous(limits=c(0,24), breaks=c(0,6, 12,18,24)) + scale_colour_discrete(labels=c("No", "Yes")) + labs(title="registered rent average value during day hours", x="hour", y="registered rents", colour="working day") 
+
+ggplot(dts, aes(x=hour, y=casual, color=as.factor(workingday))) + geom_line(stat="summary", fun.y=mean) + scale_x_continuous(limits=c(0,24), breaks=c(0,6, 12,18,24)) + scale_colour_discrete(labels=c("No", "Yes")) + labs(title="casual rent average value during day hours", x="hour", y="casual rents", colour="working day") 
+```
+  
+####Description  
+Registered and casual rentals have totally different behaviors both in terms of hours of the day and whether the day is a working day or not. For registered rentals the biggest rent count happens during the rush hours of the working days. For casual rentals the peak is in the central hours of the non working days.
+
+##Reflection  
+The Bike rental dataset is composed of 10886 rows with 11 features. The response features represents the number of rents, divided by the type of rent: "registered" rentals for users who registered their request, and "casual" rentals for users who just pick the pick the bike. The "count" feature (renamed in "total_rent") simply represents the sum of the two. The predictive feature can be splitted in two sets: time-related features and climate-related features. Time-related features include: year month, day, hour and additional information like whether the day is a working day or holiday. Climate-related features include: humidity, temperature, windspeed and weather conditions.  
+I started refactoring a bit the features to split information and represent them in a simpler and easier-to-use way.  I started by exploring the variables one-by-one to understand the granularity of the dataset and the nature of the different variables. My first impression was that the dataset is very detailed: each row describe the situation in a single hour of a single day of the year. Of course with this level of detail, is is common to find dataset where variable that describes human-being activities counts lot of zero values.  
+My first thought was that climate-related variables would be very useful to predict bike rents; the elementary deduction was that to have a bycicle ride you need nice and warm weather. At the same time I noticed that the provided features were too many and that maybe some kind of redundancy were present. I approached climate-related data to seek for the most valuable features to predict response variables by looking if some kind of linear relation exists among them.  
+Unfortunatly I found that there is no strong relation, and that the weather and temperature conditions affects the variability of the rents. In case of bad weather or too cold or too hot temperatures, the rentals counts are pushed toward zero, but as the condition for a bike ride are good enough, the rentals do not assume precise or proportional value but, it happens that the variability of the rentals counts increases and the gap between minimum and maximum values incredibly increases.  
+After these considerations, I started to think that probably the changes seen in climatic analysis were partially due to climate itself, but probably it was a consequence of the weather changes on due to seasons. My reasoning were right ans as shown in plot 2, months is the most significant feature to track changes in rentals beahavior on an year-based analysis.  
+As last but not least I analyzed the rentals change within the days. I left this analyzed because I knew for sure that hour would be the most valid feature to predict rents. The analysis led to conclude that "registered" and "casual" rentals behave in totally different ways: the combination of "hour" and "workingday" shows that registered and casual rent counts are driven by people who have a totally different objective when renting a bike.  
+Anyway, building a model to predict rentals would a lot more work. "hour" and "month" features should be reworked to represents in better way the human behavior. "month", for example, should be substitued with a feature that describes the location of the month in seasons and within that season, as a decimal number for example. "hour" feature should be aggregate in bigger time slots to remove the many zero valued entries in rental counts.
