@@ -27,7 +27,7 @@ Data Fields:
 </ul>
 I decided to change the name "count" to "total_rent" to avoid misunderstanding in histogram plots
 ```{r, echo=FALSE}
-dts <- read.delim('train.csv', sep = ",")
+dts <- read.delim('/home/giulio/Dropbox/DSN_data/train.csv', sep = ",")
 library(plyr)
 dts <-rename(dts, replace=c("count" = "total_rent"))
 dim(dts)
